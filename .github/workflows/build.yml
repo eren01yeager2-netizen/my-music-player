@@ -21,7 +21,7 @@ jobs:
         with:
           channel: 'stable'
 
-      - name: Create Clean Android Platform
+      - name: Create Clean Android Platform & Inject Permissions
         run: |
           mkdir temp_build
           cd temp_build
@@ -29,6 +29,9 @@ jobs:
           cd ..
           cp -r temp_build/app_skeleton/android .
           rm -rf temp_build
+
+          # Inject permissions into AndroidManifest.xml
+          sed -i '/<manifest/a \    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>\n    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO"/>\n    <uses-permission android:name="android.permission.WAKE_LOCK"/>' android/app/src/main/AndroidManifest.xml
 
       - name: Install Packages
         run: flutter pub get
