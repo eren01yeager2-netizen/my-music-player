@@ -21,15 +21,24 @@ jobs:
         with:
           channel: 'stable'
 
+      - name: Create Complete Android Project Skeleton
+        run: |
+          mkdir temp_build
+          cd temp_build
+          flutter create --platforms=android --project-name=my_music_player app_skeleton
+          cd ..
+          cp -r temp_build/app_skeleton/android .
+          rm -rf temp_build
+
       - name: Install Packages
         run: flutter pub get
 
       - name: Build APK
-        run: flutter build apk --split-per-abi
+        run: flutter build apk --release
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: Music-Player-App
-          path: build/app/outputs/flutter-apk/*.apk
+          path: build/app/outputs/flutter-apk/app-release.apk
           
