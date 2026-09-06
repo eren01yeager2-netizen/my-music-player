@@ -3,7 +3,6 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:file_picker/file_picker.dart';
 
 void main() {
   runApp(const GhostMusicApp());
@@ -64,20 +63,20 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
 
   Future<void> _scanStorage() async {
     setState(() => _isLoading = true);
-    
-    // Request Android audio permissions
+
     await Permission.audio.request();
     await Permission.storage.request();
+    await Permission.manageExternalStorage.request();
 
     List<SongInfo> foundSongs = [];
-
-    // Scan standard Android directories
     List<String> folders = [
       '/storage/emulated/0/Music',
       '/storage/emulated/0/Download',
       '/storage/emulated/0/Download/Telegram',
       '/storage/emulated/0/Audiobooks',
       '/storage/emulated/0/Podcasts',
+      '/storage/emulated/0/Ringtones',
+      '/storage/emulated/0/Recordings',
     ];
 
     for (var f in folders) {
@@ -88,7 +87,9 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
           for (var item in files) {
             if (item.path.endsWith('.mp3') || item.path.endsWith('.m4a') || item.path.endsWith('.wav')) {
               String name = item.path.split('/').last.replaceAll(RegExp(r'\.(mp3|m4a|wav)$'), '');
-              foundSongs.add(SongInfo(title: name, artist: "Local Audio", path: item.path));
+              if (!foundSongs.any((s) => s.path == item.path)) {
+                foundSongs.add(SongInfo(title: name, artist: "Local Audio", path: item.path));
+              }
             }
           }
         } catch (_) {}
@@ -101,41 +102,15 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
     });
   }
 
-  // Fallback if Android restricts folder scanning: lets user pick files directly
-  Future<void> _pickAudioFiles() async {
-    FilePickerResult? result = await FilePicker.platform.pickFiles(
-      type: FileType.audio,
-      allowMultiple: true,
-    );
-
-    if (result != null && result.files.isNotEmpty) {
-      List<SongInfo> selected = [];
-      for (var file in result.files) {
-        if (file.path != null) {
-          selected.add(SongInfo(
-            title: file.name.replaceAll(RegExp(r'\.(mp3|m4a|wav)$'), ''),
-            artist: "Selected Track",
-            path: file.path!,
-          ));
-        }
-      }
-      setState(() {
-        _songs.addAll(selected);
-      });
-      if (_songs.isNotEmpty && _currentIndex == null) {
-        _playSong(0);
-      }
-    }
-  }
-
   Future<void> _playSong(int index) async {
+    if (index < 0 || index >= _songs.length) return;
     try {
       _currentIndex = index;
       await _player.setFilePath(_songs[index].path);
       _player.play();
       setState(() {});
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error playing: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Cannot play: $e')));
     }
   }
 
@@ -269,8 +244,6 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
               Image.asset('assets/logo.png', width: 38, height: 38),
               const Spacer(),
               _roundIcon(Icons.refresh, onTap: _scanStorage),
-              const SizedBox(width: 10),
-              _roundIcon(Icons.file_upload, onTap: _pickAudioFiles),
             ],
           ),
           const SizedBox(height: 18),
@@ -287,7 +260,6 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
             ),
           ),
           const SizedBox(height: 22),
-          // Discover weekly card
           Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(color: const Color(0xFFC6A7FE), borderRadius: BorderRadius.circular(28)),
@@ -300,7 +272,7 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
                       const Text("Discover weekly", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 18)),
                       const SizedBox(height: 6),
                       Text(
-                        _songs.isEmpty ? "Tap play or import audio files" : "${_songs.length} offline songs ready",
+                        _songs.isEmpty ? "Tap refresh to find songs" : "${_songs.length} offline songs ready",
                         style: const TextStyle(color: Colors.black87, fontSize: 12),
                       ),
                       const SizedBox(height: 14),
@@ -313,7 +285,7 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
                             if (_songs.isNotEmpty) {
                               _togglePlayPause();
                             } else {
-                              _pickAudioFiles();
+                              _scanStorage();
                             }
                           },
                         ),
@@ -330,12 +302,7 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               const Text("Recent Tracks", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-              if (_songs.isEmpty)
-                TextButton.icon(
-                  onPressed: _pickAudioFiles,
-                  icon: const Icon(Icons.add, size: 16, color: Color(0xFFD8F25C)),
-                  label: const Text("Select Songs", style: TextStyle(color: Color(0xFFD8F25C), fontSize: 12)),
-                ),
+              IconButton(icon: const Icon(Icons.refresh, size: 18, color: Color(0xFFD8F25C)), onPressed: _scanStorage),
             ],
           ),
           const SizedBox(height: 8),
@@ -347,13 +314,13 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
                 padding: const EdgeInsets.symmetric(vertical: 30),
                 child: Column(
                   children: [
-                    const Text("No songs found in standard folders", style: TextStyle(color: Colors.white54)),
+                    const Text("No songs found in Music or Download folder", style: TextStyle(color: Colors.white54)),
                     const SizedBox(height: 10),
                     ElevatedButton.icon(
                       style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFD8F25C), foregroundColor: Colors.black),
-                      onPressed: _pickAudioFiles,
-                      icon: const Icon(Icons.folder_open),
-                      label: const Text("Select Audio from Storage"),
+                      onPressed: _scanStorage,
+                      icon: const Icon(Icons.refresh),
+                      label: const Text("Scan Folders Again"),
                     ),
                   ],
                 ),
@@ -380,7 +347,7 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
                 const Spacer(),
                 const Text("My Music", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                 const Spacer(),
-                _roundIcon(Icons.add, onTap: _pickAudioFiles),
+                _roundIcon(Icons.refresh, onTap: _scanStorage),
               ],
             ),
           ),
@@ -389,9 +356,9 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
                 ? Center(
                     child: ElevatedButton.icon(
                       style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFD8F25C), foregroundColor: Colors.black),
-                      onPressed: _pickAudioFiles,
-                      icon: const Icon(Icons.audio_file),
-                      label: const Text("Choose Songs from Phone"),
+                      onPressed: _scanStorage,
+                      icon: const Icon(Icons.refresh),
+                      label: const Text("Scan for Music"),
                     ),
                   )
                 : ListView.builder(
